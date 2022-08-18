@@ -8,27 +8,51 @@ var RNFS = require('react-native-fs');
 
 const path = RNFS.MainBundlePath + '/www';
 const documentPath = RNFS.DocumentDirectoryPath + '/www';
-RNFS.copyFile(path, documentPath);
+const imagePath = documentPath + '/image.jpg';
+
 let server;
 
 const App = () => {
+  const startServer = () => {
+    server = new StaticServer(8080, documentPath);
+    server.start().then(url => {
+      setUrl(url);
+    });
+  };
+
+  const [isUsingCached, setIsUsingCached] = useState(false);
   const [url, setUrl] = useState<string | undefined>(undefined);
   const [loaded, setLoaded] = useState<boolean>(false);
   useEffect(() => {
-    console.log(RNFS.readDir(documentPath));
-    RNFetchBlob.config({path: documentPath + '/image.jpg'})
-      .fetch(
-        'GET',
-        'https://assets.skyweaver.net/aL_BvVlm/webapp/backgrounds/private.jpg',
-      )
-      .then(res => {
-        console.log('file saved to path:', res.path());
+    RNFS.exists(documentPath).then((exists: boolean) => {
+      if (!exists) {
+        console.log(path + ' to ' + documentPath);
+        RNFS.copyFile(path, documentPath);
+      } else {
+        console.log('documentPath already exists, using it');
+      }
+    });
+
+    RNFS.exists(imagePath).then((exists: boolean) => {
+      if (exists) {
+        console.log('image already exists, using it');
         setLoaded(true);
-        server = new StaticServer(8080, documentPath);
-        server.start().then(url => {
-          setUrl(url);
-        });
-      });
+        setIsUsingCached(true);
+        startServer();
+      } else {
+        console.log('fetching image');
+        RNFetchBlob.config({path: imagePath})
+          .fetch(
+            'GET',
+            'https://assets.skyweaver.net/aL_BvVlm/webapp/backgrounds/private.jpg',
+          )
+          .then(res => {
+            console.log('file saved to path:', res.path());
+            setLoaded(true);
+            startServer();
+          });
+      }
+    });
   }, []);
   return (
     <SafeAreaView>
@@ -36,6 +60,7 @@ const App = () => {
       {url && loaded && (
         <View style={{height: '100%', width: '100%', backgroundColor: 'white'}}>
           <Text>Serving {url}</Text>
+          <Text>Using cached: {isUsingCached.toString()}</Text>
           <WebView
             style={{flex: 1}}
             source={{uri: url}}
